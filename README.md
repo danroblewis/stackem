@@ -12,20 +12,63 @@ It does **not** create branches, write commits, open pull requests, merge anythi
 anything, delete anything, or replace CI. Those stay with git, `gh`, your editor and GitHub's
 merge button.
 
-## Run it
+## Run it with uvx
 
-No install step:
+`uvx` runs a tool in a throwaway environment — nothing is installed into your system or project.
+
+**From GitHub, no checkout needed.** This is the normal way to use it:
 
 ```console
-$ uvx stackem                 # from PyPI
-$ uvx --from . stackem        # from a checkout
+$ uvx --from git+https://github.com/danroblewis/stackem stackem
+$ uvx --from git+https://github.com/danroblewis/stackem stackem sync
 ```
 
-Or in a checkout: `uv run stackem`. Python 3.11+, standard library only, and it shells out to
-your own `git` (2.38 or newer, for `merge-tree --write-tree`).
+Pin a tag or branch to keep a team on one version:
 
-Forge access goes through `gh` when it is on your `PATH`, and falls back to the REST API with
-`GITHUB_TOKEN` (or `GH_TOKEN`) when it is not.
+```console
+$ uvx --from git+https://github.com/danroblewis/stackem@v1.0.0 stackem sync
+```
+
+Shell alias, so you can type `stackem` like any other command:
+
+```bash
+alias stackem='uvx --from git+https://github.com/danroblewis/stackem stackem'
+```
+
+uvx caches the build, so only the first run pays for it. Add `--refresh` to pick up a new commit
+on a branch you have already run.
+
+**From a local checkout:**
+
+```console
+$ uvx --from . stackem
+$ uvx --from . stackem sync --dry-run
+```
+
+**While working on stackem itself**, `uv run` uses the project environment and picks up your
+edits without a rebuild:
+
+```console
+$ uv run stackem
+$ uv run pytest
+```
+
+> **Do not run `uvx stackem`.** The name `stackem` on PyPI belongs to an unrelated astronomy
+> package ("Image plane stacking tools"), so that command silently downloads and runs someone
+> else's project. Always pass `--from`, naming this repository or a checkout. If this is ever
+> published, it will be under a different distribution name — the command you type stays
+> `stackem`, but the `--from` argument changes.
+
+### What it needs
+
+| | |
+|---|---|
+| Python | 3.11 or newer — `uvx` fetches one if you do not have it |
+| git | **2.38 or newer**, for `merge-tree --write-tree`; stackem shells out to your own git |
+| forge access | `gh` if it is on your `PATH` (auth is already solved there), otherwise the REST API with `GITHUB_TOKEN` or `GH_TOKEN` |
+
+No dependencies beyond the standard library, and nothing to configure — no `init`, no git config
+writes, no state files. Run it inside any repository whose branches form a stack.
 
 ## Three commands
 
