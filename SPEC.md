@@ -490,11 +490,20 @@ scrolling past.
 
 ## 10. Testing
 
-End-to-end against real git repositories in temp directories, plus a fake forge implementing the
-Provider interface (§11). **The fake must reproduce the verified behaviors** — deleting a branch
-closing PRs referencing it as head or base, refusing reopen while either branch is missing,
-squash-merge minting a commit with a different patch-id — or the suite passes while reality
-breaks. Keep an opt-in suite against a real throwaway repository.
+Three layers.
+
+**Unit and integration:** real git repositories built in temp directories by a test harness, with
+an in-process **mock GitHub server** speaking the REST endpoints stackem uses. Driving the real
+provider against a mock server rather than stubbing the provider keeps the HTTP layer under test.
+
+**The mock must reproduce the verified behaviors** — deleting a branch closes every PR referencing
+it as head or base, reopening fails while either branch is missing, squash-merge mints a commit
+with a different patch-id, `refs/pull/N/head` persists after branch deletion — or the suite passes
+while reality breaks. Each behavior it fakes should cite the spec section that verified it.
+
+**Acceptance:** an opt-in suite against the real `danroblewis/stackem-spike` repository on GitHub,
+run deliberately rather than in CI. It exists to catch the mock drifting from GitHub's actual
+behavior.
 
 | Area | Cases |
 |---|---|
@@ -514,8 +523,12 @@ breaks. Keep an opt-in suite against a real throwaway repository.
 
 ## 11. Implementation notes
 
-- **Go, shelling out to the `git` binary.** Not libgit2 or go-git — neither implements rebase, and
-  rebase-with-conflict-resolution is the entire product. Single static binary, no runtime.
+- **Python, shelling out to the `git` binary.** Not pygit2 or dulwich — neither implements rebase,
+  and rebase-with-conflict-resolution is the entire product. Every git interaction goes through one
+  wrapper module so it can be traced and tested.
+- **Distributed for `uvx`.** `uvx stackem` must work with no install step. That means a
+  `pyproject.toml` with a `[project.scripts]` entry point, stdlib-only dependencies where possible,
+  and no post-install hooks.
 - **Minimum git 2.38** for `merge-tree --write-tree`; `--force-if-includes` needs 2.30. Assert on
   first run.
 - **Forge access behind a Provider interface.** GitHub first; Gitea and Codeberg speak
