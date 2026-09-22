@@ -15,15 +15,21 @@ git, your editor, `gh`, and GitHub's merge button. stackem keeps the chain corre
 ## The whole command surface
 
 ```
-stackem                         show the stack and what is out of date
+stackem                         show the stack and what is out of date  (read-only)
 stackem sync                    make everything correct again  (re-run anytime)
-stackem abort                   undo an in-progress sync, restore every branch tip
-stackem parent <b> --onto <p>   fix a wrongly-inferred parent
+stackem abort                   abort an in-progress restack, restore branch tips
+stackem parent <b> --onto <p>   retarget b's pull request to p
 ```
+
+stackem stores nothing. A pull request's base branch is its parent; everything else is derived
+from git. There is no configuration and no setup step.
 
 `sync` is the only one you need day to day. It is **re-entrant**: if it stops on a conflict,
 you resolve the files and run `stackem sync` again. There is no separate "continue" command to
 remember.
+
+sync rebases and pushes. It never closes a pull request, deletes a branch, or reopens a closed
+one — when those are needed it prints the command and leaves the decision to you.
 
 ## Example sessions
 

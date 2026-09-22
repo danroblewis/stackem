@@ -18,8 +18,12 @@ branch below it.
   again. Do not run `git rebase --continue` yourself — sync does it.
 - If `sync` says a branch has no PR, it prints the exact `gh pr create --base ... ` command.
   Run it with a body written from `.github/pull_request_template.md`.
+- `sync` never closes a PR, deletes a branch, or reopens a closed PR. When one of those is
+  needed it prints the command and leaves it to you. Read what it says before running it.
 - Do not run `git push --force` or `git push -f`. sync owns pushing.
 - Do not delete a branch that has an open child PR; it closes the child PR.
+- A pull request's base branch IS its parent. To change a parent, use
+  `stackem parent <branch> --onto <new-parent>` rather than editing the PR by hand.
 
 Every stackem command ends its output with the next command to run. Follow it.
 ```
@@ -32,7 +36,8 @@ state every session. It burns tokens and it guesses wrong.
 
 stackem inverts that:
 
-- **Ordinary git objects.** Real branches, real PRs, no naming scheme. Everything the model
+- **Ordinary git objects.** Real branches, real PRs, no naming scheme, and no metadata of its
+  own — the parent is the PR's base branch, and everything else is derived. Everything the model
   already knows about git applies directly.
 - **One verb.** `stackem sync` is the whole normal loop. Re-entrant, so there is no state
   machine to track.

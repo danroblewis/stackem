@@ -77,26 +77,32 @@ main (origin/main, up to date)
   auth-docs has no pull request:
     gh pr create --base auth-ui --head auth-docs
 
-everything else is up to date. nothing to sync.
+everything else is up to date.
+
+next: gh pr create --base auth-ui --head auth-docs
 ```
 
-It worked out that `auth-docs` sits on `auth-ui` sits on `auth-endpoints` sits on `auth-model`
-sits on `main`, and recorded it. Nothing was rewritten and nothing was pushed — the stack was
-already correct.
+It worked the chain out from your pull requests: each PR's base branch is its parent. `auth-docs`
+has no PR yet, so its parent came from the branch topology instead.
 
-If inference gets it wrong — usually because you branched from the middle of another branch
-rather than its tip — stackem says so instead of guessing:
+Nothing was recorded — `stackem` only reads. Nothing was rewritten and nothing was pushed, because
+the stack was already correct.
+
+Open the last PR and the picture is complete:
 
 ```console
-$ stackem
-main (origin/main, up to date)
-  1. auth-model      #101  synced
-  2. auth-endpoints  #102  synced
-  ?  spike-caching   --    cannot infer parent
+$ gh pr create --base auth-ui --title "auth: docs" --body-file .github/pull_request_template.md
+https://github.com/acme/app/pull/104
+```
 
-  spike-caching branches from the middle of auth-endpoints, not its tip.
-  Tell me which branch it belongs on:
-    stackem parent spike-caching --onto auth-endpoints
+If a PR ends up targeting the wrong branch, that *is* the parent being wrong, and one command
+fixes both:
+
+```console
+$ stackem parent auth-docs --onto auth-ui
+retargeting PR #104 base auth-endpoints -> auth-ui... ok
+
+next: stackem sync
 ```
 
 ---
@@ -124,9 +130,11 @@ restacking auth-docs onto auth-ui... ok (1 commit)
 
 verifying... all 4 commit ranges unchanged
 pushing auth-model auth-endpoints auth-ui auth-docs... ok (atomic)
-PR bases: #102 #103 correct, #104 none
+PR bases: #102 #103 #104 all correct
 
 done. 3 branches restacked, 4 pushed.
+
+next: nothing — the stack is current.
 ```
 
 That is the whole workflow. Write code with git, run `stackem sync` when something underneath

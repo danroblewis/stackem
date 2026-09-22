@@ -86,6 +86,8 @@ PR bases: all correct
 
 done. 3 branches restacked, 3 pushed.
   auth-ui now has 2 commits (was 3)
+
+next: nothing — the stack is current.
 ```
 
 sync noticed the rebase in progress, finished it, and carried on with the rest of the stack.
@@ -118,16 +120,18 @@ At any point, including mid-conflict:
 
 ```console
 $ stackem abort
-aborting rebase of auth-ui... done
-restoring branch tips from snapshot 2026-09-22T14:31:07:
+aborting restack of auth-ui... done
+restoring branch tips:
   auth-endpoints  9c4e1a2  (unchanged)
   auth-ui         7b1d9e4  restored
   auth-docs       2e8f3a1  (unchanged)
 
 done. nothing was pushed.
+
+next: stackem
 ```
 
-Every branch tip is snapshotted to a ref before sync touches anything, so this is exact rather
+sync records every branch tip before it starts rebasing, so this is exact rather
 than best-effort. Note the last line: sync pushes only after the entire cascade succeeds, so an
 abort never leaves a half-updated stack on GitHub.
 

@@ -45,9 +45,12 @@ verifying... all 6 commit ranges unchanged
 pushing auth-endpoints auth-ui auth-docs... ok (atomic)
 PR bases: all correct
 
-deleting merged branch auth-model (local and origin)... ok
+done. 3 branches restacked, 3 pushed.
 
-done. 3 branches restacked, 3 pushed, 1 merged branch removed.
+auth-model is merged and no longer part of the stack. Delete it when you are ready:
+  git push origin --delete auth-model && git branch -D auth-model
+
+next: nothing — the stack is current.
 ```
 
 Sorted. The stack is now three PRs deep with #102 at the bottom targeting `main`:
@@ -101,27 +104,22 @@ next: stackem sync
 ```console
 $ stackem sync
 fetching origin... done
-fetching refs/pull/101/head, refs/pull/102/head... done
 
-recovering PR #102 (closed by branch deletion):
-  restoring base branch auth-model at b62898a... ok
-  restoring head branch auth-endpoints at 1bb6346... ok
-  reopening #102... ok
-  retargeting #102 base auth-model -> main... ok
+WARNING  PR #102 (auth-endpoints) is closed and its head branch is gone from origin.
+         That is what a branch deletion does to a child PR. It is recoverable, but
+         stackem will not reopen a pull request on its own — someone may have closed
+         it deliberately. To restore it:
 
-auth-model: merged (squashed as 7d3f9a1) — reparenting its children
-  auth-endpoints: parent auth-model -> main
+  git fetch origin refs/pull/101/head:rescue-base refs/pull/102/head:rescue-head
+  git push origin rescue-base:refs/heads/auth-model rescue-head:refs/heads/auth-endpoints
+  gh api -X PATCH /repos/acme/app/pulls/102 -f state=open
+  gh pr edit 102 --base main
 
-restacking auth-endpoints onto origin/main... ok (2 commits)
-restacking auth-ui onto auth-endpoints... ok (3 commits)
-restacking auth-docs onto auth-ui... ok (1 commit)
+auth-ui, auth-docs: parent chain reaches a closed PR — skipped this run.
 
-verifying... all 6 commit ranges unchanged
-pushing auth-endpoints auth-ui auth-docs... ok (atomic)
+done. 0 branches restacked.
 
-deleting merged branch auth-model (local and origin)... ok
-
-done. 1 PR recovered, 3 branches restacked, 3 pushed.
+next: run the commands above, then: stackem sync
 ```
 
 #102 is open again with its review history, approvals and inline comments intact, now targeting

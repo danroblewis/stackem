@@ -75,6 +75,8 @@ PR bases: all correct
 
 done. 3 branches restacked, 3 pushed.
   auth-ui now has 2 commits (was 3)
+
+next: nothing — the stack is current.
 ```
 
 Done. One thing worth flagging: `auth-ui` lost a commit.

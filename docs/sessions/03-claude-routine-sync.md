@@ -40,6 +40,8 @@ pushing auth-model auth-endpoints auth-ui auth-docs... ok (atomic)
 PR bases: all correct
 
 done. 4 branches restacked, 4 pushed.
+
+next: nothing — the stack is current.
 ```
 
 All four branches replayed onto the new `main` cleanly, no conflicts. The verify step confirmed
@@ -81,7 +83,9 @@ main (origin/main, up to date)
   3. auth-ui         #103  synced
   4. auth-docs       #104  synced
 
-everything is up to date. nothing to sync.
+everything is up to date.
+
+next: nothing — the stack is current.
 ```
 
 No action needed — the stack is already current.

@@ -1,115 +1,111 @@
 # stackem
 
-A CLI that keeps a chain of stacked branches and their GitHub pull requests in sync, especially
-when the company squash-merges. It does **not** create branches, write commits, open PRs, or
-merge anything — git, `gh` and GitHub's merge button already do those.
+A CLI that keeps a chain of stacked branches and their pull requests in sync, especially when the
+company squash-merges. It does **not** create branches, write commits, open PRs, or merge
+anything.
 
-Design docs: [SPEC.md](SPEC.md). Example sessions: [docs/](docs/README.md).
+Design: [SPEC.md](SPEC.md). Example sessions: [docs/](docs/README.md).
+
+## Two constraints that decide most arguments
+
+**stackem stores nothing.** No refs, no config keys, no files. The parent is the pull request's
+base branch; the fork point is `merge-base(origin/<parent>, <branch>)`. If you find yourself
+wanting to persist something, that is a design smell — check §3 of the spec first, because an
+earlier draft stored three things and all three turned out to be derivable.
+
+**stackem changes no configuration.** No `push.default`, no repo settings, no `init`. The user
+may not have admin rights on their company's GitHub.
 
 ## Command surface — resist growing it
 
 ```
-stackem                         show the stack and what is stale
-stackem sync                    make everything correct again  (re-entrant, idempotent)
-stackem abort                   undo an in-progress sync, restore every branch tip
-stackem parent <b> --onto <p>   fix a wrongly-inferred parent
+stackem                         show the stack (READ-ONLY — never writes)
+stackem sync                    make everything correct again (re-entrant, idempotent)
+stackem abort                   abort an in-progress restack, restore tips
+stackem parent <b> --onto <p>   retarget b's pull request to p
 ```
 
-The primary motivation for this tool is that the team's current stacking tool (`ghstack`) burns
-enormous Claude context and corrupts git history. Every design decision serves: **ordinary git
-objects, one verb, self-documenting output.** A new subcommand needs to justify itself against
-that.
+The tool exists because `ghstack` burns Claude context and corrupts history. Every decision serves
+**ordinary git objects, one verb, self-documenting output.** A new subcommand must justify itself
+against that.
 
 ## Invariants
 
-These were each verified empirically against git 2.39.5 and a live GitHub repo. They are not
-guesses. Violating one causes silent data loss or destroyed pull requests.
+Each verified empirically against git 2.39.5 and a live GitHub repo. Violating one causes silent
+data loss or destroyed pull requests.
 
-### History rewriting
+### Deriving state
 
-1. **Never compute the rebase base with `git merge-base` once a base ref exists.** After a squash
-   merge it points below the parent's commits, so the rebase replays those commits against the
-   squash commit that already contains them, and conflicts. Always use the stored
-   `refs/stackem/base/<branch>`.
-1b. **The one exception is bootstrapping.** For a branch with no base ref yet whose parent still
-   exists and is unmerged, `base := merge-base(parent, child)` is correct — it is the fork point.
-   Do **not** additionally assert it equals `tip(parent)`; on any stale stack it will not, and
-   that is normal. If the parent is already merged or deleted, bootstrap from
-   `refs/pull/<parent-pr>/head` instead.
-1c. **`rebase --onto` silently flattens merge commits.** Hand-built branches often contain
-   `git merge main`. Report and confirm before the first sync of such a branch — it rewrites
-   history in a way the user did not request.
-2. **Detect a merged branch by tree comparison**, not ancestry or patch-id. Squashing changes the
-   patch-id, so `git cherry` and `git merge-base --is-ancestor` both report "not merged".
-   `git merge-tree --write-tree <trunk> <branch>` equal to `<trunk>^{tree}` means merged. Prefer
-   the GitHub PR state when available; this is the offline fallback.
-3. **A dry-run rebase is not a merge test.** It conflicts rather than emptying, and wedges the
-   repo.
-4. Commits that *become* empty are dropped by rebase automatically; commits that were *already*
-   empty are preserved. **Always surface drops** — git mentions them in output that scrolls past.
-5. `refs/stackem/*` are GC roots. This is load-bearing: after a merged parent branch is deleted,
-   the base ref is the only thing keeping its tip commit reachable.
+1. **The PR's base branch is the parent.** Never store a parent. `gh pr create` ignores the
+   upstream ref, and `git push -u` overwrites it — storing a parent in a field git manages was a
+   verified mistake.
+2. **The fork point is `merge-base(origin/<parent>, <branch>)`** — the parent's *last-synced*
+   state, not its local tip. Against the local tip the derivation fails after an amend.
+3. **Guard every restack with `merge-base --is-ancestor origin/<parent> <branch>`.** False means
+   the parent was force-pushed without restacking its children; stop and report rather than
+   rebasing, which would conflict on the parent's own commit.
+4. **Rebase roots onto `origin/<trunk>`, never local `<trunk>`.** sync does not fast-forward the
+   local trunk.
+5. **`stackem` (no args) is read-only.** It must not record inferences or fetch-and-write.
+
+### The cascade
+
+6. **Skip merged branches in the walk.** Replaying one either drops all its commits — so sync
+   mistakes it for an emptied branch — or conflicts against the squash commit and halts forever.
+7. **Reparenting is transitive.** Hoist to the nearest *unmerged* ancestor, repeating to a
+   fixpoint. Two PRs merging in one run otherwise leaves a branch parented to a doomed branch,
+   and deleting that branch closes the child's PR.
+8. **The stack excludes the trunk from its member set.** Walking "up" from the trunk collects
+   every branch in the repo. Spine = HEAD down to trunk; members = spine minus trunk; then
+   descendants of members.
+9. **All local work completes and verifies before anything touches the remote.** Restack, then
+   range-diff, then push. Stop before phase 2 on any unexpected change.
+10. **Detect dropped commits structurally**, by comparing ranges — never by parsing rebase output.
+    A conflict resolved to an empty diff prints nothing at all.
 
 ### Pushing
 
-6. **Never lease a force-push against a freshly fetched SHA.** The fetch absorbs the other
-   person's commit, making the lease vacuous — verified to silently clobber a teammate. Lease
-   against `refs/stackem/pushed/<branch>`, the SHA *we* last pushed.
-7. Always pass `--force-if-includes` as well. Never bare `--force`.
-8. **Push every changed branch in one `git push --atomic`.** Pushing sequentially leaves a window
-   where a child PR displays the entire stack, already-merged commits included.
-9. Nothing is pushed until the whole cascade succeeds, so an abort never leaves a half-updated
-   stack on GitHub.
+11. **`git push --atomic --force-with-lease --force-if-includes`.** Bare flags — no stored
+    push-point needed. Verified to block a teammate clobber and permit a legitimate post-rebase
+    push. Never bare `--force`.
+12. **Atomic across all changed branches.** Sequential pushes leave a window where a child's PR
+    shows the whole stack.
 
-### GitHub
+### Forge
 
-10. **Deleting a branch closes every open PR that references it as head *or* base.** A PR closed
-    this way cannot be reopened while either branch is missing.
-11. **Retarget child PR bases before deleting any branch.** This is the single most destructive
-    ordering mistake available; get it wrong and the child PR's review history goes with it.
-12. Closure is recoverable: GitHub retains commits under `refs/pull/N/head` indefinitely. Restore
-    **both** the head and base branches, `PATCH /repos/{o}/{r}/pulls/N -f state=open`, then
-    retarget. Comments, approvals and conversation survive.
-13. **Never pass `--delete-branch` when merging.** Warn when the repo has
-    `delete_branch_on_merge = true` — it closes child PRs on every merge.
-14a. **Branch → pull request is not one-to-one.** A branch can carry several PRs (a closed one and
-    a merged one, say). Index by head ref with precedence: open, else most recent merged, else
-    closed. Verified.
-14b. **Classify closed PRs before acting.** Closed + not merged + head branch *missing* means a
-    branch deletion wrecked it and sync should rescue it. Closed + not merged + head branch
-    *present* means a person closed it deliberately — never resurrect that one.
-14c. **Git owns structure; GitHub owns PR state.** sync makes PR bases match local parents, never
-    the reverse. The sole exception is first sight, where a branch with no recorded parent adopts
-    its PR's base.
-14. `gh pr create` ignores the upstream ref and bases new PRs on the default branch. sync corrects
-    a wrong base after the fact; retargeting an *open* PR is safe and immediate.
-15. Creating pull requests is out of scope — the team's PR template needs an agent to write it.
-    Print the exact `gh pr create --base <parent> --head <branch>` instead.
-
-### Environment
-
-16. `refs/remotes/origin/HEAD` is often unset. Fall back to `git remote set-head origin -a`, then
-    to the GitHub API, before assuming a trunk name.
-17. Minimum git is **2.38** (`merge-tree --write-tree`). `--force-if-includes` needs 2.30.
-18. If the parent pointer is stored as the upstream ref, `push.default = current` is required —
-    and git's own failure message suggests `git push origin HEAD:<parent>`, which would push the
-    child's content onto the parent branch. Never surface that hint.
+13. **Deleting a branch closes every open PR referencing it as head *or* base**, and such a PR
+    cannot be reopened while either branch is missing.
+14. **Never close, delete, or rescue automatically.** Report and print the command. Auto-rescue
+    has a false positive (a person can close a PR *and* delete its branch) and forms an infinite
+    flip-flop with empty-branch removal.
+15. **Retarget children's PR bases before anything is deleted** — including before the user runs
+    a delete command stackem printed.
+16. **Branch → PR is not one-to-one.** Index by head ref with precedence open > most recent
+    merged > closed.
+17. **Exclude fork PRs** (`isCrossRepository`). A fork PR with a colliding head ref would
+    otherwise be indexed as a local branch's PR and retargeted.
+18. **Do not rely on `gh pr list --state all --limit 100`.** In an active repo the window fills
+    with closed PRs and the stack's open PRs fall outside it.
+19. **Merge detection needs a unique-commit guard.** `merge-tree` reports *any* branch with no
+    unique commits as merged, including a fresh branch merely behind trunk. Require
+    `rev-list --count <trunk>..<branch> > 0` first. `git cherry` does not work — squashing changes
+    the patch-id.
+20. **PR creation is out of scope.** Print `gh pr create --base <parent> --head <branch>`; the
+    team's template needs an agent to write the body.
 
 ### UX contract
 
-19. **`stackem sync` is re-entrant and idempotent.** Running it mid-conflict with the files
-    resolved continues the cascade; running it on a clean stack is a fast no-op. "If you are
-    unsure of the state, run sync" must always be correct advice.
-20. **Every output ends with the literal next command.** Nothing about the command surface should
-    need to be recalled.
-21. Snapshot every branch tip to `refs/stackem/undo/<ts>/<branch>` before mutating anything.
+21. **`stackem sync` is re-entrant and idempotent.** "If you are unsure of the state, run sync"
+    must always be correct.
+22. **sync must not continue a rebase it did not start.** Read `.git/rebase-merge/head-name` and
+    `onto`; it is ours only if head-name is a stack member and `onto` is its parent's tip.
+    Otherwise refuse — a user mid-`git rebase -i` would otherwise have their rebase continued and
+    cascaded on top of.
+23. **Every output ends with the literal next command**, including successful runs.
 
 ## Testing
 
-Every invariant above needs an end-to-end test against real git repos in temp dirs. The GitHub
-fake must reproduce the *verified* behaviors — particularly #10, #12 and squash-merge minting a
-new commit — or tests will pass while reality breaks. Keep an opt-in suite that runs against a
-real throwaway GitHub repo; the recipe is in SPEC.md.
-
-Weight the timing cases heaviest: a late fix on a lower branch that is independent, that
-conflicts, that duplicates higher work (commit dropped), and that empties a branch entirely.
+Every invariant needs an end-to-end test against real git repos in temp dirs. The forge fake must
+reproduce the verified behaviors — #13 especially — or the suite passes while reality breaks.
+Weight fork-point derivation and the timing cases (late fix on a lower branch: independent,
+conflicting, duplicate-dropped, fully emptied) heaviest. See SPEC.md §10 for the matrix.
