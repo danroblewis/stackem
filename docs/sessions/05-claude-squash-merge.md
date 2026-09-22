@@ -76,7 +76,10 @@ the branch into `main` would produce against `main`'s own tree.
 **Replaying from the right point.** Rebasing `auth-endpoints` required knowing where
 `auth-model`'s tip *used to be*. `git merge-base main auth-endpoints` points below
 `auth-model`'s commits, so rebasing from there replays those commits against the squash commit
-that already contains them — a guaranteed conflict. stackem keeps that SHA in a ref.
+that already contains them — a guaranteed conflict. The fork point is
+`merge-base(origin/auth-model, auth-endpoints)` instead: `origin/auth-model` still points at the
+pre-merge tip, so it *is* where the parent used to be. Only the target moves to `main`; the fork
+point stays with the branch the work actually grew from, and nothing is stored anywhere.
 
 **Retargeting before deleting.** PR #102's base was changed to `main` *before* `auth-model` was
 deleted. Delete the branch first and GitHub closes #102.

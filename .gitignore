@@ -1,0 +1,10 @@
+# uv / virtualenvs
+.venv/
+# byte-compiled
+__pycache__/
+*.py[cod]
+# test and build artifacts
+.pytest_cache/
+dist/
+build/
+*.egg-info/

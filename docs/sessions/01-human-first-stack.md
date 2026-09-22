@@ -146,13 +146,16 @@ you moved.
 
 Worth knowing once, then never again:
 
-- Each branch was replayed onto its parent's new tip with `git rebase --onto`, using a stored
-  record of where the parent *used to be*. Computing that with `git merge-base` would replay the
-  parent's own commits and conflict.
+- Each branch was replayed onto its parent's new tip with `git rebase --onto`. Where the parent
+  *used to be* is `merge-base(origin/<parent>, <branch>)` — the parent as it was when the stack
+  was last in sync. Against the parent's **local** tip, already amended, that derivation fails;
+  against `origin/<parent>` it is exact, and nothing has to be stored.
 - All four branches were pushed in a single atomic `git push`, so no reviewer ever loaded a PR
   showing the whole stack's commits.
-- The force-push was leased against the SHA stackem last pushed, so if a teammate had pushed to
-  one of these branches, the push would have been refused rather than silently overwriting them.
+- The force-push used `--force-with-lease --force-if-includes` with no stored push-point: the
+  lease checks the remote tip against your own reflog, which a rebase preserves and a teammate's
+  unseen commit does not. Had someone else pushed to one of these branches, the whole atomic push
+  would have been refused rather than silently overwriting them.
 
 ---
 
