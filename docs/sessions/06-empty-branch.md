@@ -87,8 +87,8 @@ the wrong direction, or rebased a branch onto its own child. Two guards:
 **sync reports it before acting**, naming every dropped commit, so the summary carries it back
 into the conversation instead of scrolling past in rebase output.
 
-**It is reversible.** `stackem abort` restores the tips sync changed, and the dropped commits stay
-reachable through the reflog. Even after you delete the branch, its commits remain retrievable
+**It is reversible.** The dropped commits stay reachable through the reflog, and nothing was
+pushed until the cascade finished. Even after you delete the branch, its commits remain retrievable
 from `refs/pull/103/head` on GitHub indefinitely:
 
 ```console

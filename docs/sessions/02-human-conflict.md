@@ -36,7 +36,7 @@ CONFLICT in auth-ui
   files      app/api/client.py
 
 Resolve the conflicts, `git add` them, then run `stackem sync` again.
-To undo everything and restore all branches: stackem abort
+To back out instead: git rebase --abort
 
 still queued after this: auth-docs
 ```
@@ -116,24 +116,30 @@ $ git reflog auth-ui
 
 ## If you want out
 
-At any point, including mid-conflict:
+There is no stackem command for this. Back out of the rebase the normal way:
 
 ```console
-$ stackem abort
-aborting restack of auth-ui... done
-restoring branch tips:
-  auth-endpoints  9c4e1a2  (unchanged)
-  auth-ui         7b1d9e4  restored
-  auth-docs       2e8f3a1  (unchanged)
-
-done. nothing was pushed.
-
-next: stackem
+$ git rebase --abort
 ```
 
-sync records every branch tip before it starts rebasing, so this is exact rather
-than best-effort. Note the last line: sync pushes only after the entire cascade succeeds, so an
-abort never leaves a half-updated stack on GitHub.
+That is the whole recovery. Nothing was pushed — sync does all its rebasing locally and only
+pushes once the entire cascade succeeds — so there is nothing on GitHub to unwind.
+
+`auth-endpoints` stays rewritten locally, because it was restacked successfully before the
+conflict. That is not damage and needs no repair:
+
+```console
+$ stackem
+main (origin/main, up to date)
+  1. auth-endpoints  #102  restacked, not pushed
+  2. auth-ui         #103  needs restack
+  3. auth-docs       #104  needs restack
+
+next: stackem sync
+```
+
+The next sync recognises `auth-endpoints` is already sitting on the right parent, skips it, and
+retries `auth-ui`. A half-finished cascade heals itself.
 
 ---
 

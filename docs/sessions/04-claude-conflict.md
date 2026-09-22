@@ -25,7 +25,7 @@ CONFLICT in auth-ui
   files      app/api/client.py
 
 Resolve the conflicts, `git add` them, then run `stackem sync` again.
-To undo everything and restore all branches: stackem abort
+To back out instead: git rebase --abort
 
 still queued after this: auth-docs
 ```
@@ -109,9 +109,13 @@ The recovery instruction is one line, and it is always the same:
 > If you are unsure what state the stack is in, run `stackem sync`.
 
 Because sync is idempotent and re-entrant, that is safe whether the repo is clean, mid-rebase
-with conflicts resolved, or mid-rebase with conflicts outstanding. Each case prints what
-happened and what to do next. The escape hatch, `stackem abort`, restores every branch tip from
-a snapshot taken before sync started, and nothing is pushed until the whole cascade succeeds.
+with conflicts resolved, or mid-rebase with conflicts outstanding. Each case prints what happened
+and what to do next.
+
+The escape hatch is `git rebase --abort` — plain git, no stackem command. Branches restacked
+before the conflict stay restacked locally, which is harmless: the next sync sees they are
+already on the right parent, skips them, and retries only the one that failed. Nothing is pushed
+until the whole cascade succeeds, so there is never a half-updated stack on GitHub.
 
 ---
 

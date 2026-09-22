@@ -119,12 +119,12 @@ mistake. The PR's base branch is where the parent already lives.
 ```
 stackem                         show the stack and what is stale
 stackem sync                    make everything correct again  (re-entrant, idempotent)
-stackem abort                   abort an in-progress restack and restore branch tips
 stackem parent <b> --onto <p>   retarget b's pull request to p
 ```
 
 `sync` is the only one needed day to day. There is no `continue`: sync detects an in-progress
-restack and resumes it (§8). There is no `init`: nothing needs configuring.
+restack and resumes it (§8). There is no `init`: nothing needs configuring. There is no `abort`
+either — backing out is `git rebase --abort`, and a half-finished cascade self-heals (§8).
 
 `stackem parent` retargets the pull request, because the PR base *is* the parent record. It is
 not a separate local write that could drift.
@@ -219,10 +219,10 @@ PHASE 1 — local, reversible
      ancestor, repeating to a fixpoint
   5. snapshot every branch tip in memory
   6. walk members bottom-up, SKIPPING merged branches:
-       guard: merge-base --is-ancestor origin/<parent> <branch>   else report and stop
-       fork   = merge-base(origin/<parent>, branch)
        target = origin/<trunk> if the parent is the trunk, else tip(parent)
-       if the branch is already based on target: skip
+       if merge-base --is-ancestor target <branch>:  skip   # already based on it
+       guard: merge-base --is-ancestor origin/<parent> <branch>   else report and stop
+       fork = merge-base(origin/<parent>, branch)
        git rebase --onto target fork branch
          conflict -> report and exit, leaving git's normal rebase state
        note dropped commits; note whether the branch emptied
@@ -241,6 +241,12 @@ PHASE 2 — remote, ordered, irreversible
 **Step 6 skips merged branches.** A merged branch's commits are already in the trunk, so replaying
 them either drops them all — making sync mistake a merged branch for an emptied one — or conflicts
 against the squash commit and halts the cascade permanently.
+
+**The skip-check precedes the guard, and the order matters.** **Verified**: after a cascade stops
+on a conflict partway up, the branches below the conflict are already restacked locally but their
+`origin/` refs still point at the old tips. Running the guard first reports a violation on a
+branch that is in fact correct. Checking "already based on target" first skips those branches
+without ever needing a fork point.
 
 **Step 4 is transitive.** When two PRs land the same morning, a child's parent may itself have a
 merged parent. Hoisting one level would leave a branch parented to a merged branch that is about
@@ -424,7 +430,7 @@ CONFLICT in auth-ui
   files      app/api/client.py
 
 Resolve the conflicts, `git add` them, then run `stackem sync` again.
-To undo the restack: stackem abort
+To back out instead: git rebase --abort
 
 still queued after this: auth-docs
 ```
@@ -447,8 +453,15 @@ the tip of that branch's derived parent. Otherwise sync refuses and tells the us
 own rebase. Without this check, running sync during an unrelated `git rebase -i` would continue
 the user's rebase and then cascade on top of it.
 
-`stackem abort` aborts the restack and restores the tips it changed. It refuses when no restack of
-its own is in progress.
+**There is no `abort` command.** **Verified** that a half-finished cascade needs no repair: the
+branches below the conflict are already based on their parents' tips, so the next sync skips them
+and retries only the branch that failed. The one thing needing undoing is git's own rebase state,
+and `git rebase --abort` does it — a command every user and every model already knows, which is
+strictly better than an alias for it.
+
+Nothing is pushed during phase 1, so backing out costs nothing on the remote. Branches rewritten
+before the conflict stay rewritten locally; the next sync recognises they are already correct and
+pushes them along with the rest.
 
 ---
 
@@ -494,7 +507,7 @@ breaks. Keep an opt-in suite against a real throwaway repository.
 | Merge detection | squash-merged → merged · behind-trunk with no unique commits → NOT merged |
 | PR indexing | two PRs on one branch → precedence · fork PR with a colliding head ref → excluded · open PR outside a 100-row window → still found |
 | Concurrency | teammate pushes → lease refuses, no data loss |
-| Conflicts | sync resumes at the right branch · refuses to continue a rebase it did not start · abort restores tips · a rejected push leaves nothing pushed |
+| Conflicts | sync resumes at the right branch · refuses to continue a rebase it did not start · after `git rebase --abort` the next sync skips already-restacked branches and retries only the failed one · a rejected push leaves nothing pushed |
 | Environment | `origin/HEAD` unset · git < 2.38 · `delete_branch_on_merge = true` |
 
 ---
@@ -550,3 +563,5 @@ breaks. Keep an opt-in suite against a real throwaway repository.
 | Push branches sequentially | Leaves a window where child PRs show the whole stack; use `--atomic` |
 | Out-of-order commit timestamps confuse history | Non-issue; silent commit *dropping* is the real hazard, and must be detected structurally |
 | A `continue` command is needed after a conflict | `sync` re-entrancy removes it — but it must verify the rebase is its own |
+| An `abort` command is needed to unwind a partial cascade | Not needed — already-restacked branches self-heal on the next sync; `git rebase --abort` covers the rest |
+| The fork-point guard can run before the skip-check | Backwards — it reports a violation on branches that are already correct. Skip-check first |

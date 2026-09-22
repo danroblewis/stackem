@@ -17,7 +17,6 @@ git, your editor, `gh`, and GitHub's merge button. stackem keeps the chain corre
 ```
 stackem                         show the stack and what is out of date  (read-only)
 stackem sync                    make everything correct again  (re-run anytime)
-stackem abort                   abort an in-progress restack, restore branch tips
 stackem parent <b> --onto <p>   retarget b's pull request to p
 ```
 

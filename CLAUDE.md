@@ -21,9 +21,11 @@ may not have admin rights on their company's GitHub.
 ```
 stackem                         show the stack (READ-ONLY — never writes)
 stackem sync                    make everything correct again (re-entrant, idempotent)
-stackem abort                   abort an in-progress restack, restore tips
 stackem parent <b> --onto <p>   retarget b's pull request to p
 ```
+
+Three commands. No `init` (nothing to configure), no `continue` (sync is re-entrant), no `abort`
+(`git rebase --abort`, and a half-finished cascade self-heals — invariant 24).
 
 The tool exists because `ghstack` burns Claude context and corrupts history. Every decision serves
 **ordinary git objects, one verb, self-documenting output.** A new subcommand must justify itself
@@ -41,9 +43,12 @@ data loss or destroyed pull requests.
    verified mistake.
 2. **The fork point is `merge-base(origin/<parent>, <branch>)`** — the parent's *last-synced*
    state, not its local tip. Against the local tip the derivation fails after an amend.
-3. **Guard every restack with `merge-base --is-ancestor origin/<parent> <branch>`.** False means
-   the parent was force-pushed without restacking its children; stop and report rather than
-   rebasing, which would conflict on the parent's own commit.
+3. **Check "already based on target" BEFORE the guard.** `merge-base --is-ancestor <target>
+   <branch>` → skip, needing no fork point. Running the guard first reports a violation on
+   branches left correctly restacked by an earlier cascade that stopped on a conflict.
+3b. **Guard every restack it does not skip, with `merge-base --is-ancestor origin/<parent>
+   <branch>`.** False means the parent was force-pushed without restacking its children; stop and
+   report rather than rebasing, which would conflict on the parent's own commit.
 4. **Rebase roots onto `origin/<trunk>`, never local `<trunk>`.** sync does not fast-forward the
    local trunk.
 5. **`stackem` (no args) is read-only.** It must not record inferences or fetch-and-write.
@@ -102,6 +107,10 @@ data loss or destroyed pull requests.
     Otherwise refuse — a user mid-`git rebase -i` would otherwise have their rebase continued and
     cascaded on top of.
 23. **Every output ends with the literal next command**, including successful runs.
+24. **No `abort` command.** A cascade that stops partway leaves the branches below the conflict
+    correctly restacked; the next sync skips them and retries only the failed branch. Backing out
+    is `git rebase --abort`. Nothing is pushed during the local phase, so there is nothing on the
+    remote to unwind.
 
 ## Testing
 
